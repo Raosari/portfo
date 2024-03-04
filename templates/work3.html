@@ -48,9 +48,9 @@
             <li><a href="./work.html" title="" class="active">001</a></li>
             <li><a href="./work2.html" title="">002</a></li>
             <li><a href="./work3.html" title="">003</a></li>
-            <li><a href="./index.html" title="">004</a></li>
-            <li><a href="./index.html" title="">005</a></li>
-            <li><a href="./index.html" title="">006</a></li>
+            <li><a href="./work4.html" title="">004</a></li>
+            <li><a href="./work5.html" title="">005</a></li>
+            <li><a href="./work6.html" title="">006</a></li>
           </ul>
       
         </div> 
@@ -63,11 +63,11 @@
     <div class="row">
       <div class="col-xs-12">
           <div class="section-container-spacer text-center">
-            <h1 class="h2">Password Checker</h1>
+            <h1 class="h2">This website!!</h1>
           </div>
           <h3 class="h3">Project description</h3>
           <p>
-            This project uses the "Have I Been Pwned" API to check if a password has been compromised in internet data breaches. The code is written in Python and uses secure hash functions.
+            This Flask application is a simple web contact form that takes user input, saves it to a CSV file (database.csv), sends an automated email to the user who filled the form, sends me an SMS notification when this happens, and also here is the code of how the server is being managed.
           </p>
         <h3 class="h3">Code source</h3>
         <p>Find the source code of my project in the following link:</p>
@@ -104,40 +104,113 @@
 <div class="container">
       <pre>
         <code class="language-python">
-import requests
-import hashlib
+from flask import Flask,render_template, request,redirect
+import csv
+from email.message import EmailMessage
+import smtplib
+from twilio.rest import Client
+import json
 
-def request_api_data(query_char):
-    url = 'https://api.pwnedpasswords.com/range/'+ query_char
-    res = requests.get(url)
-    if res.status_code != 200:
-        raise RuntimeError(f'Error fetching: {res.status_code}, check api and try again')
-    return res
+app = Flask(__name__)
 
-def get_counts_leak(hashes, hash_to_check):
-    hashes = (line.split(':') for line in hashes.text.splitlines())
-    for h,count in hashes:
-        if h == hash_to_check: 
-            return count
-    return 0
+@app.route('/')
+def my_home():
+    return render_template('index.html')
 
-def pwned_api_check(password):
-    '''check if password exist in API response'''
-    sha1_password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-    first5_char,tail = sha1_password[:5],sha1_password[5:]
-    response = request_api_data(first5_char)
-    return get_counts_leak(response,tail)
 
-def main(args):
-    for password in args:
-        count_of_leaks = pwned_api_check(password)
-        if count_of_leaks:
-            print(f"Your password {password} was found {count_of_leaks} times on internet, you should change it")
-        else:
-            print(f'Your password \'{password}\' looks secure for now, was not founded on internet leaks')    
+@app.route('/string:page_name')
+def html_page(page_name):
+    return render_template(page_name)
 
-if __name__ == '__main__':
-    main(['password'])
+
+def write_to_database(data):
+    try:
+        with open('database.csv',newline= '',mode='a') as database:
+            email = data['email']
+            subject = data['subject']
+            msg = data['message']
+            csv_writer = csv.writer(database, delimiter=',',
+                                quotechar=' ', quoting=csv.QUOTE_MINIMAL)    
+            csv_writer.writerow( [email,subject,msg] )
+    except Exception as e:
+        return f'not saved in database err: {e}'    
+
+
+def send_sms(contact):
+    with open('./config.json') as config_file:
+        try:
+            config_data = json.load(config_file)
+            account_sid = config_data.get("twilio_sid")
+            auth_token = config_data.get("twilio_token")
+            twilio_number = config_data.get("twilio_number")
+            my_phone = config_data.get("notifications_ph")
+
+        except json.JSONDecodeError as json_error:
+            raise ValueError(f'Error decoding JSON in config file: {json_error}')
+        client = Client(account_sid,auth_token)
+        client.messages.create(
+        from_= twilio_number,
+        body = f'{contact} contacted you, via portfolio website... Check database',
+        to = my_phone
+        )
+
+
+def set_email_content(email,about):
+    user = email.split("@")[0]
+    name = "".join(char for char in user if char.isalpha())
+    content = f"""Hi {name}, thank you for reaching out to me through my portfolio website.\nI appreciate your interest and will do my best to respond promptly as soon as possible about "{about}" that you indicated me.\n\nIn the meantime, feel free to explore more of my work on the site.\n\n\nKind regards, Raosari Garcia"""
+    if not about:
+        content = content.replace(' about "" that you indicated me',"")
+    return content
+
+
+def send_email(email_to_contact, subject):
+  try:
+      email = EmailMessage()
+      email['from'] = 'Raosari Garcia'
+      email['to'] = email_to_contact
+      email['subject'] = 'Thanks for contacting me'
+      
+      text_email = set_email_content(email_to_contact, subject)
+      email.set_content(text_email)
+
+      with open('./config.json') as config_file:
+          try:
+              config_data = json.load(config_file)
+              email_address = config_data.get("email_address")
+              app_password = config_data.get("app_password")
+          except json.JSONDecodeError as json_error:
+              raise ValueError(f'Error decoding JSON in config file: {json_error}')
+
+      with smtplib.SMTP(host='smtp.gmail.com', port=587) as smtp:
+          smtp.ehlo()
+          smtp.starttls()
+          try:
+              smtp.login(email_address,app_password)
+              smtp.send_message(email)
+          except smtplib.SMTPAuthenticationError:
+              raise ValueError('SMTP Authentication failed. Check email address and app password.')
+  except Exception as e:
+      return f'Email not sent. Error: {str(e)}'
+
+
+@app.route('/submit_form', methods=['POST','GET'])
+def sumbit_form():
+  if request.method == 'POST':
+    try:
+        data = request.form.to_dict()
+        email = data['email']
+        subject = data['subject']
+
+        write_to_database(data)
+        send_email(email,subject)
+        send_sms(email)
+        return redirect('thankyou.html')
+    except:
+        return 'Not saved, something went wrong'
+  else:
+      return 'something went wrong'
+          
         </code>
       </pre>
     </div>        
